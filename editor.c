@@ -21,31 +21,36 @@ typedef struct {
     int x2, y2;
     int x3, y3;
     int radius;
-    int active; // 1 if in use, 0 if deleted
+    int color;     // 1=Red, 2=Green, 3=Yellow, 4=Blue, 5=Magenta, 6=Cyan, 7=White
+    int is_filled; // 1=Filled, 0=Outline
+    int active;
 } Shape;
 
 Shape shapes[MAX_SHAPES];
 int next_id = 1;
 char canvas[CANVAS_HEIGHT][CANVAS_WIDTH];
+int canvas_color[CANVAS_HEIGHT][CANVAS_WIDTH];
 
-// Initialize canvas with '_'
+// Initialize canvas
 void init_canvas() {
     for (int y = 0; y < CANVAS_HEIGHT; y++) {
         for (int x = 0; x < CANVAS_WIDTH; x++) {
             canvas[y][x] = '_';
+            canvas_color[y][x] = 0; // Default color
         }
     }
 }
 
 // Plot a point safely
-void plot(int x, int y) {
+void plot(int x, int y, int color) {
     if (x >= 0 && x < CANVAS_WIDTH && y >= 0 && y < CANVAS_HEIGHT) {
         canvas[y][x] = '*';
+        canvas_color[y][x] = color;
     }
 }
 
 // Bresenham's Line Algorithm
-void draw_line_algo(int x1, int y1, int x2, int y2) {
+void draw_line_algo(int x1, int y1, int x2, int y2, int color) {
     int dx = abs(x2 - x1);
     int dy = abs(y2 - y1);
     int sx = (x1 < x2) ? 1 : -1;
@@ -53,7 +58,7 @@ void draw_line_algo(int x1, int y1, int x2, int y2) {
     int err = dx - dy;
 
     while (1) {
-        plot(x1, y1);
+        plot(x1, y1, color);
         if (x1 == x2 && y1 == y2) break;
         int e2 = 2 * err;
         if (e2 > -dy) {
@@ -67,20 +72,53 @@ void draw_line_algo(int x1, int y1, int x2, int y2) {
     }
 }
 
+// Horizontal line for filling
+void draw_hline(int x1, int x2, int y, int color) {
+    if (x1 > x2) { int t = x1; x1 = x2; x2 = t; }
+    for (int x = x1; x <= x2; x++) {
+        plot(x, y, color);
+    }
+}
+
+// Rectangle Algorithm
+void draw_rectangle_algo(int x1, int y1, int x2, int y2, int color, int is_filled) {
+    if (x1 > x2) { int t = x1; x1 = x2; x2 = t; }
+    if (y1 > y2) { int t = y1; y1 = y2; y2 = t; }
+
+    if (is_filled) {
+        for (int y = y1; y <= y2; y++) {
+            draw_hline(x1, x2, y, color);
+        }
+    } else {
+        draw_line_algo(x1, y1, x2, y1, color); // Top
+        draw_line_algo(x2, y1, x2, y2, color); // Right
+        draw_line_algo(x2, y2, x1, y2, color); // Bottom
+        draw_line_algo(x1, y2, x1, y1, color); // Left
+    }
+}
+
 // Midpoint Circle Algorithm
-void draw_circle_algo(int xc, int yc, int r) {
+void draw_circle_algo(int xc, int yc, int r, int color, int is_filled) {
     int x = 0, y = r;
     int d = 3 - 2 * r;
-    plot(xc + x, yc + y);
-    plot(xc - x, yc + y);
-    plot(xc + x, yc - y);
-    plot(xc - x, yc - y);
-    plot(xc + y, yc + x);
-    plot(xc - y, yc + x);
-    plot(xc + y, yc - x);
-    plot(xc - y, yc - x);
 
     while (y >= x) {
+        if (is_filled) {
+            draw_hline(xc - x, xc + x, yc + y, color);
+            draw_hline(xc - x, xc + x, yc - y, color);
+            draw_hline(xc - y, xc + y, yc + x, color);
+            draw_hline(xc - y, xc + y, yc - x, color);
+        } else {
+            plot(xc + x, yc + y, color);
+            plot(xc - x, yc + y, color);
+            plot(xc + x, yc - y, color);
+            plot(xc - x, yc - y, color);
+            plot(xc + y, yc + x, color);
+            plot(xc - y, yc + x, color);
+            plot(xc + y, yc - x, color);
+            plot(xc - y, yc - x, color);
+        }
+
         x++;
         if (d > 0) {
             y--;
@@ -88,14 +126,43 @@ void draw_circle_algo(int xc, int yc, int r) {
         } else {
             d = d + 4 * x + 6;
         }
-        plot(xc + x, yc + y);
-        plot(xc - x, yc + y);
-        plot(xc + x, yc - y);
-        plot(xc - x, yc - y);
-        plot(xc + y, yc + x);
-        plot(xc - y, yc + x);
-        plot(xc + y, yc - x);
-        plot(xc - y, yc - x);
+    }
+}
+
+// Barycentric helper
+int sign(int p1x, int p1y, int p2x, int p2y, int p3x, int p3y) {
+    return (p1x - p3x) * (p2y - p3y) - (p2x - p3x) * (p1y - p3y);
+}
+
+// Triangle Algorithm
+void draw_triangle_algo(int x1, int y1, int x2, int y2, int x3, int y3, int color, int is_filled) {
+    if (is_filled) {
+        int minX = x1, maxX = x1;
+        if (x2 < minX) minX = x2; if (x3 < minX) minX = x3;
+        if (x2 > maxX) maxX = x2; if (x3 > maxX) maxX = x3;
+        
+        int minY = y1, maxY = y1;
+        if (y2 < minY) minY = y2; if (y3 < minY) minY = y3;
+        if (y2 > maxY) maxY = y2; if (y3 > maxY) maxY = y3;
+
+        for (int y = minY; y <= maxY; y++) {
+            for (int x = minX; x <= maxX; x++) {
+                int d1 = sign(x, y, x1, y1, x2, y2);
+                int d2 = sign(x, y, x2, y2, x3, y3);
+                int d3 = sign(x, y, x3, y3, x1, y1);
+
+                int has_neg = (d1 < 0) || (d2 < 0) || (d3 < 0);
+                int has_pos = (d1 > 0) || (d2 > 0) || (d3 > 0);
+
+                if (!(has_neg && has_pos)) {
+                    plot(x, y, color);
+                }
+            }
+        }
+    } else {
+        draw_line_algo(x1, y1, x2, y2, color);
+        draw_line_algo(x2, y2, x3, y3, color);
+        draw_line_algo(x3, y3, x1, y1, color);
     }
 }
 
@@ -106,18 +173,13 @@ void render_shapes() {
 
         Shape s = shapes[i];
         if (s.type == SHAPE_LINE) {
-            draw_line_algo(s.x1, s.y1, s.x2, s.y2);
+            draw_line_algo(s.x1, s.y1, s.x2, s.y2, s.color);
         } else if (s.type == SHAPE_RECTANGLE) {
-            draw_line_algo(s.x1, s.y1, s.x2, s.y1); // Top
-            draw_line_algo(s.x2, s.y1, s.x2, s.y2); // Right
-            draw_line_algo(s.x2, s.y2, s.x1, s.y2); // Bottom
-            draw_line_algo(s.x1, s.y2, s.x1, s.y1); // Left
+            draw_rectangle_algo(s.x1, s.y1, s.x2, s.y2, s.color, s.is_filled);
         } else if (s.type == SHAPE_CIRCLE) {
-            draw_circle_algo(s.x1, s.y1, s.radius);
+            draw_circle_algo(s.x1, s.y1, s.radius, s.color, s.is_filled);
         } else if (s.type == SHAPE_TRIANGLE) {
-            draw_line_algo(s.x1, s.y1, s.x2, s.y2);
-            draw_line_algo(s.x2, s.y2, s.x3, s.y3);
-            draw_line_algo(s.x3, s.y3, s.x1, s.y1);
+            draw_triangle_algo(s.x1, s.y1, s.x2, s.y2, s.x3, s.y3, s.color, s.is_filled);
         }
     }
 }
@@ -127,7 +189,14 @@ void display_canvas() {
     printf("\n=== Canvas ===\n");
     for (int y = 0; y < CANVAS_HEIGHT; y++) {
         for (int x = 0; x < CANVAS_WIDTH; x++) {
-            putchar(canvas[y][x]);
+            int c = canvas_color[y][x];
+            char ch = canvas[y][x];
+            if (c > 0 && c <= 7) {
+                // ANSI colors: 31=Red, 32=Green, 33=Yellow, 34=Blue, 35=Magenta, 36=Cyan, 37=White
+                printf("\033[0;%dm%c\033[0m", 30 + c, ch);
+            } else {
+                putchar(ch);
+            }
         }
         putchar('\n');
     }
@@ -178,6 +247,16 @@ void add_shape() {
         return;
     }
 
+    printf("Color: 1-Red, 2-Green, 3-Yellow, 4-Blue, 5-Magenta, 6-Cyan, 7-White\nChoice: ");
+    scanf("%d", &s.color);
+
+    if (type != SHAPE_LINE) {
+        printf("Fill the shape? (1 for Yes, 0 for No): ");
+        scanf("%d", &s.is_filled);
+    } else {
+        s.is_filled = 0; // Lines can't be filled
+    }
+
     shapes[slot] = s;
     printf("Shape added with ID: %d at default positions.\n", s.id);
 }
@@ -198,7 +277,7 @@ void delete_shape() {
 
 void modify_shape() {
     int id;
-    printf("Enter ID of shape to modify: ");
+    printf("Enter ID of shape to modify (will be shifted right and down by 2): ");
     scanf("%d", &id);
 
     int idx = find_shape_index(id);
@@ -229,10 +308,12 @@ void list_shapes() {
             count++;
             Shape s = shapes[i];
             printf("ID: %d | Type: ", s.id);
-            if (s.type == SHAPE_LINE) printf("Line (%d,%d to %d,%d)\n", s.x1, s.y1, s.x2, s.y2);
-            else if (s.type == SHAPE_RECTANGLE) printf("Rectangle (%d,%d to %d,%d)\n", s.x1, s.y1, s.x2, s.y2);
-            else if (s.type == SHAPE_CIRCLE) printf("Circle (center %d,%d, radius %d)\n", s.x1, s.y1, s.radius);
-            else if (s.type == SHAPE_TRIANGLE) printf("Triangle (%d,%d, %d,%d, %d,%d)\n", s.x1, s.y1, s.x2, s.y2, s.x3, s.y3);
+            if (s.type == SHAPE_LINE) printf("Line (%d,%d to %d,%d)", s.x1, s.y1, s.x2, s.y2);
+            else if (s.type == SHAPE_RECTANGLE) printf("Rectangle (%d,%d to %d,%d)", s.x1, s.y1, s.x2, s.y2);
+            else if (s.type == SHAPE_CIRCLE) printf("Circle (center %d,%d, radius %d)", s.x1, s.y1, s.radius);
+            else if (s.type == SHAPE_TRIANGLE) printf("Triangle (%d,%d, %d,%d, %d,%d)", s.x1, s.y1, s.x2, s.y2, s.x3, s.y3);
+            
+            printf(" | Color: %d | Filled: %d\n", s.color, s.is_filled);
         }
     }
     if (count == 0) printf("No active shapes.\n");
